@@ -1,5 +1,5 @@
 [package]
-edition = "2021"
+edition = "2024"
 name = "root"
 version = "0.1.0"
 
@@ -22,6 +22,7 @@ esp-hal = { version = "1.0.0-beta.0", features = [
   "defmt",
   "esp32c3",
   "unstable",
+  "bluetooth",
 ] }
 panic-rtt-target = { version = "0.2.0", features = ["defmt"] }
 rtt-target = { version = "0.6.1", features = ["defmt"] }
@@ -43,12 +44,7 @@ bleps = { git = "https://github.com/bjoernQ/bleps", package = "bleps", rev = "a5
   "macros",
 ] }
 critical-section = "1.2.0"
-embassy-executor = { version = "0.7.0", features = [
-  "defmt",
-  "nightly",
-  "executor-thread",
-  "arch-riscv32",
-] }
+embassy-executor = { version = "0.7.0", features = ["defmt", "nightly", "arch-riscv32", "task-arena-size-4096"] }
 embassy-time = { version = "0.4.0", features = ["generic-queue-8"] }
 esp-wifi = { version = "0.13.0", features = [
   "ble",
@@ -63,8 +59,8 @@ esp-wifi = { version = "0.13.0", features = [
 heapless = { version = "0.8.0", default-features = false }
 static_cell = { version = "2.1.0", features = ["nightly"] }
 embassy-sync = "0.6.2"
-riscv-rt = "0.14.0"
 esp-hal-embassy = { version = "0.7.0", features = ["esp32c3"] }
+riscv-rt = "0.14.0"
 
 [profile.dev]
 # Rust debug is too slow.

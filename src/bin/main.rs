@@ -4,15 +4,17 @@
 #![feature(type_alias_impl_trait)]
 
 use defmt::info;
-use embassy_executor::{Executor, Spawner};
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, blocking_mutex::NoopMutex, mutex::Mutex};
+use embassy_executor::Spawner;
+use embassy_sync::{blocking_mutex::NoopMutex, blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::timer::timg::TimerGroup;
+use esp_hal_embassy::main;
 use esp_wifi::{
-    esp_now::{EspNow, EspNowManager, EspNowReceiver, EspNowSender, BROADCAST_ADDRESS},
-    init, EspWifiController,
+    EspWifiController,
+    esp_now::{BROADCAST_ADDRESS, EspNow, EspNowManager, EspNowReceiver, EspNowSender},
+    init,
 };
 use panic_rtt_target as _;
 use static_cell::StaticCell;
@@ -30,7 +32,7 @@ macro_rules! mk_static {
 
 // static EXECUTOR: StaticCell<Executor> = StaticCell::new();
 
-#[embassy_executor::main]
+#[main]
 async fn main(_spawner: Spawner) {
     // generator version: 0.3.1
 
@@ -41,7 +43,7 @@ async fn main(_spawner: Spawner) {
 
     esp_alloc::heap_allocator!(size: 72 * 1024);
 
-    let timer0 = SystemTimer::new(peripherals.SYSTIMER);
+    let timer0: SystemTimer = SystemTimer::new(peripherals.SYSTIMER);
     esp_hal_embassy::init(timer0.alarm0);
 
     info!("Embassy initialized!");
@@ -91,9 +93,9 @@ async fn main(_spawner: Spawner) {
 async fn broadcaster(sender: &'static Mutex<NoopRawMutex, EspNowSender<'static>>) {
     loop {
         Timer::after(Duration::from_secs(1)).await;
-        info!("Dang gui BROADCAST...");
+        info!("Sending BROADCAST...");
         let mut sender = sender.lock().await;
         let status = sender.send_async(&BROADCAST_ADDRESS, b"Hello").await;
-        info!("Gui BROADCAST: {:?}", status);
+        info!("Send BROADCAST: {:?}", status);
     }
 }
