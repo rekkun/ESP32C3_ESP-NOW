@@ -3,8 +3,11 @@
 #![feature(impl_trait_in_assoc_type)]
 #![feature(type_alias_impl_trait)]
 
+use core::cell::OnceCell;
+
 use defmt::info;
 use embassy_executor::Spawner;
+use embassy_net::HardwareAddress;
 use embassy_sync::{blocking_mutex::NoopMutex, blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
@@ -13,8 +16,15 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_hal_embassy::main;
 use esp_wifi::{
     EspWifiController,
-    esp_now::{BROADCAST_ADDRESS, EspNow, EspNowManager, EspNowReceiver, EspNowSender},
+    esp_now::{
+        self, BROADCAST_ADDRESS, EspNow, EspNowManager, EspNowReceiver, EspNowSender,
+        EspNowWithWifiCreateToken,
+    },
     init,
+    wifi::{
+        self, AuthMethod, ClientConfiguration, Configuration, RxControlInfo, WifiController,
+        WifiDevice, ap_mac, sta_mac,
+    },
 };
 use panic_rtt_target as _;
 use static_cell::StaticCell;
@@ -31,6 +41,11 @@ macro_rules! mk_static {
 }
 
 // static EXECUTOR: StaticCell<Executor> = StaticCell::new();
+const WIFI_SSID: &str = "P601";
+const WIFI_PASSWORD: &str = "00000000";
+const WIFI_CHANNEL: Option<u8> = Some(10);
+
+type SharedWifiController<'a> = &'a Mutex<NoopRawMutex, WifiController<'a>>;
 
 #[main]
 async fn main(_spawner: Spawner) {
@@ -59,8 +74,40 @@ async fn main(_spawner: Spawner) {
         .unwrap()
     );
 
-    let esp_now = EspNow::new(&esp_wifi_ctrl, peripherals.WIFI).unwrap();
-    let _ = esp_now.set_channel(3);
+    let (wifi, esp_now_with_wifi_token) = esp_now::enable_esp_now_with_wifi(peripherals.WIFI);
+
+    let (mut wifi_controller, wifi_interface) = wifi::new(&esp_wifi_ctrl, wifi).unwrap();
+    let wifi_config = Configuration::Client(ClientConfiguration {
+        ssid: WIFI_SSID.try_into().unwrap(),
+        auth_method: AuthMethod::WPAWPA2Personal,
+        password: WIFI_PASSWORD.try_into().unwrap(),
+        channel: WIFI_CHANNEL,
+        ..Default::default()
+    });
+
+    let _ = WifiController::set_configuration(&mut wifi_controller, &wifi_config)
+        .expect("Can't set configuration for Wifi Controller");
+    let _ = wifi_controller
+        .start()
+        .expect("Can't start Wifi Controller");
+    let _ = wifi_controller.connect().expect("Something is wrong!!!");
+    // let wifi_controller = mk_static!(WifiController<'static>, wifi_controller);
+    let mac_address_bytes: [u8; 6] = wifi_interface.sta.mac_address();
+    info!(
+        "Device MAC Address: {:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+        mac_address_bytes[0],
+        mac_address_bytes[1],
+        mac_address_bytes[2],
+        mac_address_bytes[3],
+        mac_address_bytes[4],
+        mac_address_bytes[5]
+    );
+    let wifi_controller: SharedWifiController<'static> =
+        mk_static!(Mutex<NoopRawMutex, WifiController<'static>>, Mutex::new(wifi_controller));
+    info!("WIFI state: {}", wifi::wifi_state());
+
+    let esp_now = EspNow::new_with_wifi(&esp_wifi_ctrl, esp_now_with_wifi_token).unwrap();
+    let _ = esp_now.set_channel(WIFI_CHANNEL.unwrap());
     info!("ESP_NOW version {}", esp_now.version().unwrap());
     let (manager, sender, receiver) = esp_now.split();
     let manager = mk_static!(EspNowManager, manager);
@@ -80,6 +127,7 @@ async fn main(_spawner: Spawner) {
     //     info!("Task spawned");
     // });
     let _ = _spawner.spawn(broadcaster(sender));
+    let _ = _spawner.spawn(wifireporter(wifi_controller));
 
     // loop {
     //     info!("Hello world!");
@@ -97,5 +145,16 @@ async fn broadcaster(sender: &'static Mutex<NoopRawMutex, EspNowSender<'static>>
         let mut sender = sender.lock().await;
         let status = sender.send_async(&BROADCAST_ADDRESS, b"Hello").await;
         info!("Send BROADCAST: {:?}", status);
+    }
+}
+
+#[embassy_executor::task]
+async fn wifireporter(wifi_controller: SharedWifiController<'static>) {
+    loop {
+        Timer::after(Duration::from_secs(1)).await;
+        info!(
+            "WIFI is connected?: {}",
+            wifi_controller.lock().await.is_connected()
+        );
     }
 }
