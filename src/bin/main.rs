@@ -41,8 +41,8 @@ macro_rules! mk_static {
 }
 
 // static EXECUTOR: StaticCell<Executor> = StaticCell::new();
-const WIFI_SSID: &str = "P601";
-const WIFI_PASSWORD: &str = "00000000";
+const WIFI_SSID: &str = "Wokwi-GUEST";
+const WIFI_PASSWORD: &str = "";
 const WIFI_CHANNEL: Option<u8> = Some(10);
 
 type SharedWifiController<'a> = &'a Mutex<NoopRawMutex, WifiController<'a>>;
